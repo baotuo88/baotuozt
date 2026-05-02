@@ -216,10 +216,7 @@ export default function WorkspacePage() {
           Authorization: `Bearer ${authToken}`,
         };
 
-        let resp = await fetch(`${apiBase}/me`, { headers });
-        if (!resp.ok) {
-          resp = await fetch(`${apiBase}/auth/me`, { headers });
-        }
+        const resp = await fetch(`${apiBase}/auth/me`, { headers });
         if (!resp.ok) {
           return;
         }
