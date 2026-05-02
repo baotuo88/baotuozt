@@ -125,6 +125,61 @@ implements GenerateTaskRepository, TaskQueryRepository, WorkerTaskRepository, St
     return row ?? null;
   }
 
+  async findByUser(params: {
+    userId: number;
+    limit?: number;
+    offset?: number;
+    mode?: GenerateMode;
+    status?: string;
+  }): Promise<TaskView[]> {
+    const whereClauses = ['user_id = $1'];
+    const queryParams: unknown[] = [params.userId];
+    let paramIndex = 1;
+
+    if (params.mode) {
+      paramIndex += 1;
+      whereClauses.push(`mode = $${paramIndex}`);
+      queryParams.push(params.mode);
+    }
+
+    if (params.status) {
+      paramIndex += 1;
+      whereClauses.push(`status = $${paramIndex}`);
+      queryParams.push(params.status);
+    }
+
+    const limit = params.limit ?? 20;
+    const offset = params.offset ?? 0;
+
+    paramIndex += 1;
+    const limitParam = `$${paramIndex}`;
+    queryParams.push(limit);
+
+    paramIndex += 1;
+    const offsetParam = `$${paramIndex}`;
+    queryParams.push(offset);
+
+    const result = await this.pg.query<TaskQueryRow>(
+      `SELECT
+         id,
+         user_id,
+         mode,
+         style_version,
+         status,
+         progress,
+         cancelable,
+         result_url,
+         created_at
+       FROM tasks
+       WHERE ${whereClauses.join(' AND ')}
+       ORDER BY created_at DESC
+       LIMIT ${limitParam} OFFSET ${offsetParam}`,
+      queryParams,
+    );
+
+    return result.rows;
+  }
+
   async findByIdForCancel(taskId: number): Promise<TaskForCancel | null> {
     const result = await this.pg.query<TaskCancelRow>(
       `SELECT id, user_id, status, cancelable, credit_deduction_id

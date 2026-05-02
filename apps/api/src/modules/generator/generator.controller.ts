@@ -22,6 +22,13 @@ export interface TaskView {
 
 export interface TaskQueryRepository {
   findById(taskId: number): Promise<TaskView | null>;
+  findByUser(params: {
+    userId: number;
+    limit?: number;
+    offset?: number;
+    mode?: GenerateMode;
+    status?: string;
+  }): Promise<TaskView[]>;
 }
 
 export interface StyleListItem {
@@ -236,6 +243,38 @@ export function createGeneratorRouter(params: {
       });
 
       res.status(200).json(result);
+    } catch (error) {
+      const mapped = mapError(error);
+      res.status(mapped.status).json({ message: mapped.message });
+    }
+  });
+
+  router.get('/tasks/history', params.authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.auth?.sub;
+      if (!userId) {
+        res.status(401).json({ message: 'UNAUTHORIZED' });
+        return;
+      }
+
+      const limit = Number(req.query.limit) || 20;
+      const offset = Number(req.query.offset) || 0;
+      const modeRaw = typeof req.query.mode === 'string' ? req.query.mode : undefined;
+      const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+
+      if (modeRaw && !isGenerateMode(modeRaw)) {
+        throw new Error('INVALID_MODE');
+      }
+
+      const tasks = await params.taskQueryRepository.findByUser({
+        userId,
+        limit,
+        offset,
+        mode: modeRaw as GenerateMode | undefined,
+        status,
+      });
+
+      res.status(200).json(tasks);
     } catch (error) {
       const mapped = mapError(error);
       res.status(mapped.status).json({ message: mapped.message });

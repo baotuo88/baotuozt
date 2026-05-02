@@ -1,10 +1,10 @@
 import Link from 'next/link';
 
 const entries = [
-  { key: '电商', desc: '主图 / 详情 / 场景图', href: '/workspace?mode=ecommerce' },
-  { key: '社交', desc: '小红书 / 抖音封面', href: '/workspace?mode=social' },
-  { key: '写真', desc: 'AI 人像写真生成', href: '/workspace?mode=portrait' },
-  { key: '通用', desc: '自由文生图创作', href: '/workspace?mode=general' },
+  { key: '电商', desc: '主图 / 详情 / 场景图', href: '/generate/ecommerce' },
+  { key: '社交', desc: '小红书 / 抖音封面', href: '/generate/social' },
+  { key: '写真', desc: 'AI 人像写真生成', href: '/generate/portrait' },
+  { key: '通用', desc: '自由文生图创作', href: '/generate/general' },
 ];
 
 export default function HomePage() {

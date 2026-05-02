@@ -62,9 +62,9 @@ export default function AuthPage() {
       }
       setMessage(`成功：${mode === 'login' ? '登录' : '注册'}完成，角色=${data.user.role}，已写入 localStorage token`);
 
-      // 跳转到工作台
+      // 跳转到仪表盘
       setTimeout(() => {
-        window.location.href = '/workspace';
+        window.location.href = '/dashboard';
       }, 1000);
     } catch (error) {
       setMessage(`请求异常：${error instanceof Error ? error.message : String(error)}`);
