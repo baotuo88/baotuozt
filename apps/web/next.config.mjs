@@ -23,6 +23,30 @@ const nextConfig = {
       })),
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://api:3000/:path*',
+      },
+      {
+        source: '/healthz',
+        destination: 'http://api:3000/healthz',
+      },
+      {
+        source: '/readyz',
+        destination: 'http://api:3000/readyz',
+      },
+      {
+        source: '/uploaded/:path*',
+        destination: 'http://api:3000/uploaded/:path*',
+      },
+      {
+        source: '/image/:path*',
+        destination: 'http://api:3000/image/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -93,18 +93,8 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
       NEXT_PUBLIC_IMAGE_HOSTS: ${NEXT_PUBLIC_IMAGE_HOSTS}
-
-  nginx:
-    image: nginx:alpine
-    container_name: ${COMPOSE_PROJECT_NAME:-baotuo}-nginx
-    restart: unless-stopped
-    depends_on:
-      - api
-      - web
     ports:
-      - '${NGINX_PORT:-80}:80'
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - '${WEB_PORT:-6001}:3001'
 
 volumes:
   pgdata:
