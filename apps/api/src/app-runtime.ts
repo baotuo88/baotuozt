@@ -143,6 +143,7 @@ export async function runApiServer(): Promise<void> {
       jwtSecret: config.jwtSecret,
       jwtExpiresIn: config.jwtExpiresIn,
       bcryptRounds: config.bcryptRounds,
+      adminEmails: config.adminEmails,
     },
   );
   const authMiddleware = createAuthMiddleware(authService) as RequestHandler;
@@ -248,6 +249,7 @@ export async function runApiServer(): Promise<void> {
       jwtSecret: config.jwtSecret,
       jwtExpiresIn: config.jwtExpiresIn,
       bcryptRounds: config.bcryptRounds,
+      adminEmails: config.adminEmails,
     },
     abuseService,
   }));

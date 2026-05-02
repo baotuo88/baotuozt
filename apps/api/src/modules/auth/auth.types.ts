@@ -50,6 +50,7 @@ export interface AuthConfig {
   jwtSecret: string;
   jwtExpiresIn: string;
   bcryptRounds: number;
+  adminEmails?: string[];
 }
 
 export interface AuthUserRepository {

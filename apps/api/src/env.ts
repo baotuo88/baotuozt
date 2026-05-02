@@ -108,6 +108,9 @@ export interface ApiRuntimeConfig {
   abuseRegisterPerIpPerDay: number;
   abuseAbnormalPerMinute: number;
   abuseAbnormalPerFiveMinutes: number;
+
+  // Admin emails
+  adminEmails: string[];
 }
 
 export function loadApiRuntimeConfig(): ApiRuntimeConfig {
@@ -153,6 +156,12 @@ export function loadApiRuntimeConfig(): ApiRuntimeConfig {
   const abuseAbnormalPerMinute = Math.max(1, readIntegerEnv('ABUSE_ABNORMAL_PER_MINUTE', 20));
   const abuseAbnormalPerFiveMinutes = Math.max(1, readIntegerEnv('ABUSE_ABNORMAL_PER_FIVE_MINUTES', 60));
 
+  const adminEmailsRaw = readOptionalStringEnv('ADMIN_EMAILS') || '';
+  const adminEmails = adminEmailsRaw
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
   return {
     nodeEnv,
     apiPort,
@@ -186,5 +195,6 @@ export function loadApiRuntimeConfig(): ApiRuntimeConfig {
     abuseRegisterPerIpPerDay,
     abuseAbnormalPerMinute,
     abuseAbnormalPerFiveMinutes,
+    adminEmails,
   };
 }

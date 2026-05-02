@@ -34,6 +34,11 @@ export class AuthService {
     private readonly config: AuthConfig,
   ) {}
 
+  private isAdminEmail(email: string): boolean {
+    const normalizedEmail = email.toLowerCase();
+    return this.config.adminEmails?.includes(normalizedEmail) ?? false;
+  }
+
   async register(input: RegisterInput): Promise<AuthResult> {
     const email = normalizeEmail(input.email);
     const password = input.password.trim();
@@ -51,11 +56,12 @@ export class AuthService {
     }
 
     const hashed = await bcrypt.hash(password, this.config.bcryptRounds);
+    const role = this.isAdminEmail(email) ? 'admin' : 'user';
 
     const user = await this.userRepository.create({
       email,
       password: hashed,
-      role: 'user',
+      role,
       status: 'active',
       credits: 0,
       feature_flags: getDefaultUserFeatureFlags(),
