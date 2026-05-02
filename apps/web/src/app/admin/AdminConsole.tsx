@@ -192,19 +192,12 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     );
   }
 
-  const authHeaders = useMemo(
-    () => ({
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    }),
-    [token],
-  );
-
   const fetchJson = async <T,>(path: string, options?: RequestInit): Promise<T> => {
     const resp = await fetch(`${apiBase}${path}`, {
       ...options,
       headers: {
-        ...authHeaders,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
         ...(options?.headers || {}),
       },
     });
