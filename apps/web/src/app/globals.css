@@ -42,6 +42,17 @@ body {
   font-weight: 600;
 }
 
+.admin-nav-link {
+  display: inline-block;
+  text-decoration: none;
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  background: linear-gradient(90deg, var(--accent), #e7a255);
+  color: #fff;
+  font-weight: 700;
+}
+
 .hero .tag {
   display: inline-block;
   padding: 6px 10px;

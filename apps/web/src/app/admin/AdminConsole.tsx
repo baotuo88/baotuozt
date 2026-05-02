@@ -418,11 +418,11 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
       <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
         <h2>功能模块</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link href="/admin"><button onClick={() => setPanel('stats')}>统计概览</button></Link>
-          <Link href="/admin/users"><button onClick={() => setPanel('users')}>用户管理</button></Link>
-          <Link href="/admin/tasks"><button onClick={() => setPanel('tasks')}>任务管理</button></Link>
-          <Link href="/admin/providers"><button onClick={() => setPanel('providers')}>模型提供商</button></Link>
-          <Link href="/admin/logs"><button onClick={() => setPanel('logs')}>日志管理</button></Link>
+          <Link href="/admin" onClick={() => setPanel('stats')} className="admin-nav-link">统计概览</Link>
+          <Link href="/admin/users" onClick={() => setPanel('users')} className="admin-nav-link">用户管理</Link>
+          <Link href="/admin/tasks" onClick={() => setPanel('tasks')} className="admin-nav-link">任务管理</Link>
+          <Link href="/admin/providers" onClick={() => setPanel('providers')} className="admin-nav-link">模型提供商</Link>
+          <Link href="/admin/logs" onClick={() => setPanel('logs')} className="admin-nav-link">日志管理</Link>
         </div>
       </section>
 
