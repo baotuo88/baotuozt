@@ -241,15 +241,6 @@ export async function runApiServer(): Promise<void> {
 
   const routerList: Router[] = [];
 
-  routerList.push(createAuthModule({
-    userRepository: new AuthUserPgRepository(pg),
-    config: {
-      jwtSecret: config.jwtSecret,
-      jwtExpiresIn: config.jwtExpiresIn,
-      bcryptRounds: config.bcryptRounds,
-    },
-    abuseService,
-  }));
   const authPrefixedRouter = ExpressRouter();
   authPrefixedRouter.use('/auth', createAuthModule({
     userRepository: new AuthUserPgRepository(pg),

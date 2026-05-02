@@ -11,12 +11,13 @@ export default function HomePage() {
   return (
     <main className="home">
       <div className="home-topbar">
-        <Link href="/auth" className="account-link">账号</Link>
+        <div className="logo">宝拓智图</div>
+        <Link href="/auth" className="account-link">登录 / 注册</Link>
       </div>
       <section className="hero">
-        <p className="tag">宝拓智图</p>
-        <h1>多功能 AI 生图平台</h1>
-        <p>选择场景即可创作，无需复杂 Prompt。</p>
+        <p className="tag">AI 生图平台</p>
+        <h1>专业 AI 图像生成</h1>
+        <p>多场景智能生图，无需复杂提示词，一键生成专业级作品</p>
       </section>
 
       <section className="grid">
@@ -24,7 +25,7 @@ export default function HomePage() {
           <Link key={item.key} href={item.href} className="entry-card">
             <h2>{item.key}</h2>
             <p>{item.desc}</p>
-            <span>进入工作台</span>
+            <span>开始创作</span>
           </Link>
         ))}
       </section>

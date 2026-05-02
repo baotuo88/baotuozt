@@ -506,23 +506,43 @@ export default function WorkspacePage() {
           ) : null}
 
           <button onClick={onGenerate} disabled={loading}>
-            {loading ? '生成中...' : '生成'}
+            {loading ? (
+              <>
+                <span className="spinner" style={{ marginRight: 8 }}></span>
+                生成中...
+              </>
+            ) : (
+              '开始生成'
+            )}
           </button>
-          {errorMessage ? <p style={{ color: '#b42318', margin: 0 }}>{errorMessage}</p> : null}
-          <div>
-            任务进度：{progress}% {taskStatusText ? `· ${taskStatusText}` : ''}
-            <div style={{ height: 8, background: '#eadfcf', borderRadius: 999, marginTop: 6 }}>
-              <div
-                style={{
-                  width: `${Math.max(0, Math.min(progress, 100))}%`,
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #d47c3c, #e7a255)',
-                  borderRadius: 999,
-                  transition: 'width .25s ease',
-                }}
-              />
+
+          {errorMessage ? (
+            <div style={{
+              padding: '12px 16px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '12px',
+              color: '#ef4444',
+              fontSize: '14px'
+            }}>
+              {errorMessage}
             </div>
-          </div>
+          ) : null}
+
+          {loading || progress > 0 ? (
+            <div className="progress-container">
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${Math.max(0, Math.min(progress, 100))}%` }}
+                />
+              </div>
+              <div className="progress-text">
+                <span>{taskStatusText || '准备中...'}</span>
+                <span>{progress}%</span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="right">

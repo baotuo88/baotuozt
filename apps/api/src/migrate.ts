@@ -29,7 +29,7 @@ function requiredEnv(name: string): string {
 
 async function run(): Promise<void> {
   const dbUrl = requiredEnv('DATABASE_URL');
-  const sqlDir = path.resolve(process.cwd(), 'sql');
+  const sqlDir = path.join(__dirname, '../sql');
   const pool = new Pool({ connectionString: dbUrl });
 
   try {
