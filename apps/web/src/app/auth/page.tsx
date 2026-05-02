@@ -76,7 +76,7 @@ export default function AuthPage() {
       <section className="hero">
         <p className="tag">账号系统</p>
         <h1>{mode === 'login' ? '登录' : '注册'}</h1>
-        <p>注册/登录成功后会自动写入 token，可直接进入工作台和管理后台。</p>
+        <p>注册/登录成功后会自动写入 token，可直接进入工作台。</p>
       </section>
 
       <section className="entry-card" style={{ display: 'grid', gap: 12 }}>

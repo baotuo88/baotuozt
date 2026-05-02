@@ -27,6 +27,21 @@ body {
   padding: 48px 20px 72px;
 }
 
+.home-topbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.account-link {
+  text-decoration: none;
+  color: #fff;
+  background: var(--accent-2);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
 .hero .tag {
   display: inline-block;
   padding: 6px 10px;

@@ -87,6 +87,7 @@ type ApiCallLog = {
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+const adminAccessCode = process.env.NEXT_PUBLIC_ADMIN_ACCESS_CODE || '';
 type AdminPanel = 'stats' | 'users' | 'tasks' | 'providers' | 'logs';
 
 function toQueryRole(value: 'all' | UserRole): string {
@@ -99,6 +100,8 @@ function toQueryStatus(value: 'all' | UserStatus): string {
 
 export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
   const [panel, setPanel] = useState<AdminPanel>(props.initialPanel ?? 'stats');
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [accessGranted, setAccessGranted] = useState(false);
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -137,8 +140,25 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('admin_access_granted');
     setToken('');
     setError('已退出登录，本地 token 已清除。');
+    setAccessGranted(false);
+  };
+
+  const verifyAccessCode = () => {
+    if (!adminAccessCode) {
+      setAccessGranted(true);
+      localStorage.setItem('admin_access_granted', '1');
+      return;
+    }
+    if (accessCodeInput.trim() !== adminAccessCode) {
+      setError('后台访问码错误');
+      return;
+    }
+    setError('');
+    setAccessGranted(true);
+    localStorage.setItem('admin_access_granted', '1');
   };
 
   useEffect(() => {
@@ -149,7 +169,28 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     if (saved) {
       setToken(saved);
     }
+    const granted = window.localStorage.getItem('admin_access_granted') === '1';
+    if (granted || !adminAccessCode) {
+      setAccessGranted(true);
+    }
   }, []);
+
+  if (!accessGranted) {
+    return (
+      <main style={{ maxWidth: 520, margin: '48px auto', padding: 20, display: 'grid', gap: 12 }}>
+        <h1>后台访问验证</h1>
+        <p>请输入后台访问码后继续。</p>
+        <input
+          type="password"
+          value={accessCodeInput}
+          onChange={(e) => setAccessCodeInput(e.target.value)}
+          placeholder="请输入后台访问码"
+        />
+        <button onClick={verifyAccessCode}>进入后台</button>
+        {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+      </main>
+    );
+  }
 
   const authHeaders = useMemo(
     () => ({
