@@ -1,0 +1,28 @@
+FROM node:20-bookworm-slim AS base
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN npm ci
+
+FROM deps AS build
+COPY tsconfig.base.json ./
+COPY apps/api apps/api
+RUN npm run build -w @baotuo/api
+
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/apps/api/sql ./apps/api/sql
+
+RUN mkdir -p /app/apps/api/storage
+EXPOSE 3000
+WORKDIR /app/apps/api
+CMD ["node", "dist/server.js"]

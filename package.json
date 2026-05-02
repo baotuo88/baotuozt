@@ -1,0 +1,25 @@
+{
+  "name": "baotuo-zhitu-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c cyan,yellow,green \"npm run dev -w @baotuo/api\" \"npm run dev:worker -w @baotuo/api\" \"npm run dev -w @baotuo/web\"",
+    "dev:api": "npm run dev -w @baotuo/api",
+    "dev:worker": "npm run dev:worker -w @baotuo/api",
+    "dev:web": "npm run dev -w @baotuo/web",
+    "build": "npm run build -w @baotuo/api && npm run build -w @baotuo/web",
+    "start:api": "npm run start -w @baotuo/api",
+    "start:worker": "npm run start:worker -w @baotuo/api",
+    "start:web": "npm run start -w @baotuo/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  }
+}

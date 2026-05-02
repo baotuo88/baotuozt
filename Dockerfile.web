@@ -1,0 +1,33 @@
+FROM node:20-bookworm-slim AS base
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN npm ci
+
+FROM deps AS build
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_IMAGE_HOSTS
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ENV NEXT_PUBLIC_IMAGE_HOSTS=${NEXT_PUBLIC_IMAGE_HOSTS}
+COPY tsconfig.base.json ./
+COPY apps/web apps/web
+RUN npm run build -w @baotuo/web
+
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/apps/web/package.json ./apps/web/package.json
+COPY --from=build /app/apps/web/.next ./apps/web/.next
+COPY --from=build /app/apps/web/next.config.mjs ./apps/web/next.config.mjs
+COPY --from=build /app/apps/web/public ./apps/web/public
+COPY --from=build /app/apps/web/src ./apps/web/src
+
+EXPOSE 3001
+WORKDIR /app/apps/web
+CMD ["npm", "run", "start", "--", "-p", "3001", "-H", "0.0.0.0"]

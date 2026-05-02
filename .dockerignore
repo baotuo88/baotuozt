@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+.npm
+.git
+.gitignore
+.DS_Store
+apps/api/dist
+apps/web/.next
+apps/web/out
+apps/api/storage
+*.log

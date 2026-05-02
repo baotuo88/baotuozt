@@ -1,0 +1,25 @@
+node_modules/
+.npm/
+
+# Build outputs
+apps/api/dist/
+apps/web/.next/
+apps/web/out/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# macOS
+.DS_Store
+
+# Uploaded / generated assets
+apps/api/storage/
