@@ -1,6 +1,8 @@
 import Link from 'next/link';
 
 const entries = [
+  { key: '账号', desc: '登录 / 注册 / Token 持久化', href: '/auth' },
+  { key: '后台', desc: '管理用户、任务、模型和日志', href: '/admin' },
   { key: '电商', desc: '主图 / 详情 / 场景图', href: '/workspace?mode=ecommerce' },
   { key: '社交', desc: '小红书 / 抖音封面', href: '/workspace?mode=social' },
   { key: '写真', desc: 'AI 人像写真生成', href: '/workspace?mode=portrait' },

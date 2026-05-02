@@ -135,6 +135,12 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
 
   const canRun = useMemo(() => Boolean(apiBase && token), [token]);
 
+  const logout = () => {
+    localStorage.removeItem('token');
+    setToken('');
+    setError('已退出登录，本地 token 已清除。');
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -359,6 +365,9 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
             </button>
             <button onClick={() => void refreshLogs()} disabled={loading || !token}>
               刷新日志
+            </button>
+            <button onClick={logout}>
+              退出登录
             </button>
           </div>
           {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
