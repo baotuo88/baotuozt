@@ -214,15 +214,11 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     );
   }
 
-  const apiClient = useMemo(
-    () =>
-      createApiClient({
-        baseUrl: apiBase,
-        getToken: () => token,
-        timeoutMs: 15000,
-      }),
-    [token],
-  );
+  const apiClient = createApiClient({
+    baseUrl: apiBase,
+    getToken: () => token,
+    timeoutMs: 15000,
+  });
 
   const refreshAll = async () => {
     if (!canRun) {
