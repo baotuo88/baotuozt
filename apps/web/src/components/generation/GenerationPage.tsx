@@ -146,6 +146,11 @@ export function GenerationPage({ mode, title, description }: GenerationPageProps
       return;
     }
 
+    if (!styleId || styleId === 0) {
+      setErrorMessage('请选择一个风格后再生成。');
+      return;
+    }
+
     setLoading(true);
     setProgress(10);
     setTaskStatusText('准备任务...');
@@ -157,9 +162,11 @@ export function GenerationPage({ mode, title, description }: GenerationPageProps
       try {
         normalizedRemoteUrl = await uploadLocalImage(selectedFile);
         setRemoteImageUrl(normalizedRemoteUrl);
-      } catch {
+      } catch (error) {
+        console.error('Upload error:', error);
         setErrorMessage('图片上传失败，请稍后重试。');
         setLoading(false);
+        setProgress(0);
         return;
       }
     }
@@ -179,7 +186,11 @@ export function GenerationPage({ mode, title, description }: GenerationPageProps
         }),
       });
 
-      if (!createResp.ok) throw new Error('CREATE_TASK_FAILED');
+      if (!createResp.ok) {
+        const errorData = await createResp.json().catch(() => ({}));
+        const errorMsg = errorData.message || `请求失败 (${createResp.status})`;
+        throw new Error(errorMsg);
+      }
 
       const created = await createResp.json() as { task_id: number | null; result_url?: string; from_cache: boolean };
 
@@ -212,10 +223,13 @@ export function GenerationPage({ mode, title, description }: GenerationPageProps
         },
       });
       setLoading(false);
-    } catch {
-      setErrorMessage('创建任务失败，请稍后重试。');
+    } catch (error) {
+      console.error('Generation error:', error);
+      const errorMsg = error instanceof Error ? error.message : '创建任务失败，请稍后重试。';
+      setErrorMessage(errorMsg);
       setTaskStatusText('创建失败');
       setLoading(false);
+      setProgress(0);
     }
   };
 
