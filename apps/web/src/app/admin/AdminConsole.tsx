@@ -142,7 +142,7 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     localStorage.removeItem('token');
     localStorage.removeItem('admin_access_granted');
     setToken('');
-    setError('已退出登录，本地 token 已清除。');
+    setError('已退出登录，本地 token 已清除。请前往 /auth 重新登录。');
     setAccessGranted(false);
   };
 
@@ -210,7 +210,7 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
 
   const refreshAll = async () => {
     if (!canRun) {
-      setError('请先填写管理员 token，且 NEXT_PUBLIC_API_BASE_URL 需要已配置。');
+      setError('请先登录账号，且 NEXT_PUBLIC_API_BASE_URL 需要已配置。');
       return;
     }
 
@@ -238,7 +238,7 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
 
   const refreshLogs = async () => {
     if (!canRun) {
-      setError('请先填写管理员 token，且 NEXT_PUBLIC_API_BASE_URL 需要已配置。');
+      setError('请先登录账号，且 NEXT_PUBLIC_API_BASE_URL 需要已配置。');
       return;
     }
     setLoading(true);
@@ -367,14 +367,15 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
 
       <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
         <div style={{ display: 'grid', gap: 8 }}>
-          <label htmlFor="token">管理员 JWT 令牌</label>
-          <textarea
-            id="token"
-            rows={3}
-            value={token}
-            onChange={(e) => setToken(e.target.value.trim())}
-            placeholder="粘贴管理员 JWT"
-          />
+          <p style={{ margin: 0 }}>
+            登录状态：
+            {token ? '已登录（已自动读取本地 token）' : '未登录，请先前往账号页登录'}
+            {!token ? (
+              <>
+                {' '}<Link href="/auth">去登录</Link>
+              </>
+            ) : null}
+          </p>
           <label htmlFor="taskLimit">任务数量上限</label>
           <input
             id="taskLimit"
