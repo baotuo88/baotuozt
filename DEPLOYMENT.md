@@ -42,6 +42,12 @@ docker compose -p baotuo logs -f migrate api worker web
 - Web: `http://localhost:6001`
 - API 健康检查: `http://localhost:6002/healthz`
 
+如果 `migrate` 失败，先看日志定位：
+
+```bash
+docker compose -p baotuo logs migrate
+```
+
 ## 3. 常用运维命令
 停止容器：
 

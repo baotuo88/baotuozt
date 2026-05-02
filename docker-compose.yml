@@ -41,7 +41,7 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    command: ["npm", "run", "migrate", "-w", "@baotuo/api"]
+    command: ["node", "dist/migrate.js"]
     restart: "no"
 
   api:
