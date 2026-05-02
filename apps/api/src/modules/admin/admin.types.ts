@@ -21,6 +21,29 @@ export interface AdminApiConfigItem {
   daily_budget?: number;
 }
 
+export interface AdminTaskItem {
+  id: number;
+  user_id: number;
+  mode: string;
+  style_id: number;
+  status: 'pending' | 'processing' | 'done' | 'failed' | 'canceled';
+  progress: number;
+  cancelable: boolean;
+  result_url?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminModelProviderInput {
+  name: string;
+  base_url: string;
+  api_key: string;
+  model_type: string;
+  priority: number;
+  status: 'active' | 'inactive' | 'error';
+}
+
 export interface AdminStats {
   users_total: number;
   tasks_total: number;
@@ -45,7 +68,14 @@ export interface AdminStats {
 
 export interface AdminRepository {
   listUsers(): Promise<AdminUserItem[]>;
+  updateUserStatus(userId: number, status: 'active' | 'disabled' | 'banned'): Promise<AdminUserItem | null>;
+  updateUserRole(userId: number, role: 'user' | 'admin' | 'operator'): Promise<AdminUserItem | null>;
+  adjustUserCredits(userId: number, delta: number): Promise<AdminUserItem | null>;
   updateUserFeatureFlags(userId: number, featureFlagsPatch: UserFeatureFlagsPatch): Promise<AdminUserItem | null>;
+  listTasks(limit: number): Promise<AdminTaskItem[]>;
+  cancelTask(taskId: number): Promise<boolean>;
   listApiConfigs(): Promise<AdminApiConfigItem[]>;
+  createModelProvider(input: AdminModelProviderInput): Promise<AdminApiConfigItem>;
+  updateModelProvider(id: number, input: Partial<AdminModelProviderInput>): Promise<AdminApiConfigItem | null>;
   getStats(): Promise<AdminStats>;
 }

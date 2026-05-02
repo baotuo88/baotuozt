@@ -2,8 +2,10 @@ import { normalizeUserFeatureFlags } from '../feature-flags';
 import type { UserFeatureFlagsPatch } from '../feature-flags';
 import type {
   AdminApiConfigItem,
+  AdminModelProviderInput,
   AdminRepository,
   AdminStats,
+  AdminTaskItem,
   AdminUserItem,
 } from './admin.types';
 
@@ -23,6 +25,20 @@ interface AdminUserRow {
 
 interface NumberRow {
   value: number;
+}
+
+interface AdminTaskRow {
+  id: number;
+  user_id: number;
+  mode: string;
+  style_id: number;
+  status: 'pending' | 'processing' | 'done' | 'failed' | 'canceled';
+  progress: number;
+  cancelable: boolean;
+  result_url?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 function toAdminUserItem(row: AdminUserRow): AdminUserItem {
@@ -95,6 +111,75 @@ export class AdminPgRepository implements AdminRepository {
     return row ? toAdminUserItem(row) : null;
   }
 
+  async updateUserStatus(
+    userId: number,
+    status: 'active' | 'disabled' | 'banned',
+  ): Promise<AdminUserItem | null> {
+    const result = await this.pg.query<AdminUserRow>(
+      `UPDATE users
+       SET status = $2
+       WHERE id = $1
+       RETURNING id, email, role, status, credits, feature_flags, created_at`,
+      [userId, status],
+    );
+    const row = result.rows[0];
+    return row ? toAdminUserItem(row) : null;
+  }
+
+  async updateUserRole(
+    userId: number,
+    role: 'user' | 'admin' | 'operator',
+  ): Promise<AdminUserItem | null> {
+    const result = await this.pg.query<AdminUserRow>(
+      `UPDATE users
+       SET role = $2
+       WHERE id = $1
+       RETURNING id, email, role, status, credits, feature_flags, created_at`,
+      [userId, role],
+    );
+    const row = result.rows[0];
+    return row ? toAdminUserItem(row) : null;
+  }
+
+  async adjustUserCredits(userId: number, delta: number): Promise<AdminUserItem | null> {
+    const result = await this.pg.query<AdminUserRow>(
+      `UPDATE users
+       SET credits = GREATEST(0, credits + $2)
+       WHERE id = $1
+       RETURNING id, email, role, status, credits, feature_flags, created_at`,
+      [userId, delta],
+    );
+    const row = result.rows[0];
+    return row ? toAdminUserItem(row) : null;
+  }
+
+  async listTasks(limit: number): Promise<AdminTaskItem[]> {
+    const normalizedLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 100;
+    const result = await this.pg.query<AdminTaskRow>(
+      `SELECT id, user_id, mode, style_id, status, progress, cancelable, result_url, error_message, created_at, updated_at
+       FROM tasks
+       ORDER BY id DESC
+       LIMIT $1`,
+      [normalizedLimit],
+    );
+    return result.rows;
+  }
+
+  async cancelTask(taskId: number): Promise<boolean> {
+    const result = await this.pg.query<{ id: number }>(
+      `UPDATE tasks
+       SET status = 'canceled',
+           cancelable = FALSE,
+           canceled_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1
+         AND status IN ('pending', 'processing')
+       RETURNING id`,
+      [taskId],
+    );
+    return Boolean(result.rows[0]);
+  }
+
   async listApiConfigs(): Promise<AdminApiConfigItem[]> {
     const result = await this.pg.query<{
       id: number;
@@ -118,6 +203,125 @@ export class AdminPgRepository implements AdminRepository {
       status: row.status,
       priority: row.priority,
     }));
+  }
+
+  async createModelProvider(input: AdminModelProviderInput): Promise<AdminApiConfigItem> {
+    const result = await this.pg.query<{
+      id: number;
+      name: string;
+      base_url: string;
+      model_type: string;
+      status: 'active' | 'inactive' | 'error';
+      priority: number;
+    }>(
+      `INSERT INTO model_providers (name, base_url, api_key, model_type, priority, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, base_url, model_type, status, priority`,
+      [input.name, input.base_url, input.api_key, input.model_type, input.priority, input.status],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error('MODEL_PROVIDER_CREATE_FAILED');
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      base_url: row.base_url,
+      model: row.model_type,
+      status: row.status,
+      priority: row.priority,
+    };
+  }
+
+  async updateModelProvider(
+    id: number,
+    input: Partial<AdminModelProviderInput>,
+  ): Promise<AdminApiConfigItem | null> {
+    const sets: string[] = [];
+    const params: unknown[] = [id];
+
+    if (typeof input.name === 'string') {
+      params.push(input.name);
+      sets.push(`name = $${params.length}`);
+    }
+    if (typeof input.base_url === 'string') {
+      params.push(input.base_url);
+      sets.push(`base_url = $${params.length}`);
+    }
+    if (typeof input.api_key === 'string') {
+      params.push(input.api_key);
+      sets.push(`api_key = $${params.length}`);
+    }
+    if (typeof input.model_type === 'string') {
+      params.push(input.model_type);
+      sets.push(`model_type = $${params.length}`);
+    }
+    if (typeof input.priority === 'number' && Number.isInteger(input.priority)) {
+      params.push(input.priority);
+      sets.push(`priority = $${params.length}`);
+    }
+    if (input.status === 'active' || input.status === 'inactive' || input.status === 'error') {
+      params.push(input.status);
+      sets.push(`status = $${params.length}`);
+    }
+
+    if (sets.length === 0) {
+      const existing = await this.pg.query<{
+        id: number;
+        name: string;
+        base_url: string;
+        model_type: string;
+        status: 'active' | 'inactive' | 'error';
+        priority: number;
+      }>(
+        `SELECT id, name, base_url, model_type, status, priority
+         FROM model_providers
+         WHERE id = $1
+         LIMIT 1`,
+        [id],
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        return null;
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        base_url: row.base_url,
+        model: row.model_type,
+        status: row.status,
+        priority: row.priority,
+      };
+    }
+
+    const result = await this.pg.query<{
+      id: number;
+      name: string;
+      base_url: string;
+      model_type: string;
+      status: 'active' | 'inactive' | 'error';
+      priority: number;
+    }>(
+      `UPDATE model_providers
+       SET ${sets.join(', ')}
+       WHERE id = $1
+       RETURNING id, name, base_url, model_type, status, priority`,
+      params,
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      base_url: row.base_url,
+      model: row.model_type,
+      status: row.status,
+      priority: row.priority,
+    };
   }
 
   async getStats(): Promise<AdminStats> {
@@ -165,4 +369,3 @@ export class AdminPgRepository implements AdminRepository {
     };
   }
 }
-
