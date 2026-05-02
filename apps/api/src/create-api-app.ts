@@ -1,4 +1,7 @@
-import express, { type Express, type RequestHandler, type Router } from 'express';
+import express, { type Express, type Request, type RequestHandler, type Router } from 'express';
+import { randomUUID } from 'crypto';
+
+type RequestWithId = Request & { request_id?: string };
 
 export interface CreateApiAppInput {
   routers: Router[];
@@ -93,6 +96,16 @@ export function createApiApp(input: CreateApiAppInput): Express {
     app.set('trust proxy', 1);
   }
 
+  app.use((req, res, next) => {
+    const incoming = typeof req.headers['x-request-id'] === 'string'
+      ? req.headers['x-request-id'].trim()
+      : '';
+    const requestId = incoming || randomUUID();
+    (req as RequestWithId).request_id = requestId;
+    res.setHeader('X-Request-Id', requestId);
+    next();
+  });
+
   if (securityHeadersEnabled) {
     app.use((_req, res, next) => {
       setSecurityHeaders(res);
@@ -150,6 +163,20 @@ export function createApiApp(input: CreateApiAppInput): Express {
   for (const router of input.routers) {
     app.use(router);
   }
+
+  app.use((error: unknown, req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1], next: Parameters<RequestHandler>[2]) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    const requestId = (req as RequestWithId).request_id;
+    const detail = error instanceof Error ? error.message : String(error);
+    res.status(500).json({
+      message: 'INTERNAL_ERROR',
+      request_id: requestId,
+      detail: process.env.NODE_ENV === 'production' ? undefined : detail,
+    });
+  });
 
   return app;
 }

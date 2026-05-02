@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { ApiClientError, createApiClient } from '../../lib/api-client';
 
 type UserRole = 'user' | 'admin' | 'operator';
 type UserStatus = 'active' | 'disabled' | 'banned';
@@ -127,6 +128,27 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     priority: 100,
     status: 'active' as ProviderStatus,
   });
+  const [lastRequestId, setLastRequestId] = useState('');
+
+  function escapeCsvCell(value: unknown): string {
+    const raw = String(value ?? '');
+    const escaped = raw.replace(/"/g, '""');
+    return `"${escaped}"`;
+  }
+
+  function exportCsv(filename: string, headers: string[], rows: Array<Array<unknown>>) {
+    const content = [
+      headers.map(escapeCsvCell).join(','),
+      ...rows.map((line) => line.map(escapeCsvCell).join(',')),
+    ].join('\n');
+    const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     if (!token) {
@@ -192,21 +214,15 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     );
   }
 
-  const fetchJson = async <T,>(path: string, options?: RequestInit): Promise<T> => {
-    const resp = await fetch(`${apiBase}${path}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...(options?.headers || {}),
-      },
-    });
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`HTTP_${resp.status}:${text}`);
-    }
-    return (await resp.json()) as T;
-  };
+  const apiClient = useMemo(
+    () =>
+      createApiClient({
+        baseUrl: apiBase,
+        getToken: () => token,
+        timeoutMs: 15000,
+      }),
+    [token],
+  );
 
   const refreshAll = async () => {
     if (!canRun) {
@@ -218,19 +234,25 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     setError('');
     try {
       const [statsResp, usersResp, tasksResp, providersResp] = await Promise.all([
-        fetchJson<AdminStats>('/admin/stats'),
-        fetchJson<AdminUser[]>(
+        apiClient.get<AdminStats>('/admin/stats'),
+        apiClient.get<AdminUser[]>(
           `/admin/users?keyword=${encodeURIComponent(userKeyword)}&role=${toQueryRole(userRoleFilter)}&status=${toQueryStatus(userStatusFilter)}&limit=${userPageSize}&offset=${(userPage - 1) * userPageSize}`,
         ),
-        fetchJson<AdminTask[]>(`/admin/tasks?limit=${taskLimit}`),
-        fetchJson<AdminProvider[]>('/admin/api-configs'),
+        apiClient.get<AdminTask[]>(`/admin/tasks?limit=${taskLimit}`),
+        apiClient.get<AdminProvider[]>('/admin/api-configs'),
       ]);
-      setStats(statsResp);
-      setUsers(usersResp);
-      setTasks(tasksResp);
-      setProviders(providersResp);
+      setStats(statsResp.data);
+      setUsers(usersResp.data);
+      setTasks(tasksResp.data);
+      setProviders(providersResp.data);
+      setLastRequestId(statsResp.requestId || usersResp.requestId || tasksResp.requestId || providersResp.requestId || '');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof ApiClientError) {
+        setError(`${e.message}${e.requestId ? ` (request_id=${e.requestId})` : ''}${e.responseText ? `: ${e.responseText}` : ''}`);
+        setLastRequestId(e.requestId || '');
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -245,57 +267,49 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     setError('');
     try {
       const [r1, r2, r3] = await Promise.all([
-        fetchJson<RequestLog[]>(`/logs/requests?limit=${logsLimit}`),
-        fetchJson<ErrorLog[]>(`/logs/errors?limit=${logsLimit}`),
-        fetchJson<ApiCallLog[]>(`/logs/api-calls?limit=${logsLimit}`),
+        apiClient.get<RequestLog[]>(`/logs/requests?limit=${logsLimit}`),
+        apiClient.get<ErrorLog[]>(`/logs/errors?limit=${logsLimit}`),
+        apiClient.get<ApiCallLog[]>(`/logs/api-calls?limit=${logsLimit}`),
       ]);
-      setRequestLogs(r1);
-      setErrorLogs(r2);
-      setApiCallLogs(r3);
+      setRequestLogs(r1.data);
+      setErrorLogs(r2.data);
+      setApiCallLogs(r3.data);
+      setLastRequestId(r1.requestId || r2.requestId || r3.requestId || '');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof ApiClientError) {
+        setError(`${e.message}${e.requestId ? ` (request_id=${e.requestId})` : ''}${e.responseText ? `: ${e.responseText}` : ''}`);
+        setLastRequestId(e.requestId || '');
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const patchUserRole = async (userId: number, role: UserRole) => {
-    await fetchJson(`/admin/users/${userId}/role`, {
-      method: 'PATCH',
-      body: JSON.stringify({ role }),
-    });
+    await apiClient.patch(`/admin/users/${userId}/role`, { role });
     await refreshAll();
   };
 
   const patchUserStatus = async (userId: number, status: UserStatus) => {
-    await fetchJson(`/admin/users/${userId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    });
+    await apiClient.patch(`/admin/users/${userId}/status`, { status });
     await refreshAll();
   };
 
   const adjustCredits = async (userId: number, delta: number) => {
-    await fetchJson(`/admin/users/${userId}/credits`, {
-      method: 'POST',
-      body: JSON.stringify({ delta }),
-    });
+    await apiClient.post(`/admin/users/${userId}/credits`, { delta });
     await refreshAll();
   };
 
   const cancelTask = async (taskId: number) => {
-    await fetchJson(`/admin/tasks/${taskId}/cancel`, {
-      method: 'POST',
-    });
+    await apiClient.post(`/admin/tasks/${taskId}/cancel`);
     await refreshAll();
   };
 
   const toggleProviderStatus = async (provider: AdminProvider) => {
     const nextStatus: ProviderStatus = provider.status === 'active' ? 'inactive' : 'active';
-    await fetchJson(`/admin/model-providers/${provider.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: nextStatus }),
-    });
+    await apiClient.patch(`/admin/model-providers/${provider.id}`, { status: nextStatus });
     await refreshAll();
   };
 
@@ -312,13 +326,10 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
       return;
     }
 
-    await fetchJson(`/admin/model-providers/${provider.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        base_url: baseUrl.trim(),
-        api_key: (apiKey ?? '').trim() || undefined,
-        priority,
-      }),
+    await apiClient.patch(`/admin/model-providers/${provider.id}`, {
+      base_url: baseUrl.trim(),
+      api_key: (apiKey ?? '').trim() || undefined,
+      priority,
     });
     await refreshAll();
   };
@@ -328,16 +339,13 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
       setError('新增 provider 时 name / base_url / api_key 为必填');
       return;
     }
-    await fetchJson('/admin/model-providers', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: providerForm.name.trim(),
-        base_url: providerForm.base_url.trim(),
-        api_key: providerForm.api_key.trim(),
-        model_type: providerForm.model_type.trim(),
-        priority: providerForm.priority,
-        status: providerForm.status,
-      }),
+    await apiClient.post('/admin/model-providers', {
+      name: providerForm.name.trim(),
+      base_url: providerForm.base_url.trim(),
+      api_key: providerForm.api_key.trim(),
+      model_type: providerForm.model_type.trim(),
+      priority: providerForm.priority,
+      status: providerForm.status,
     });
     setProviderForm({
       name: '',
@@ -354,10 +362,7 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
     userId: number,
     patch: { show_new_feature?: boolean; enable_new_model?: boolean },
   ) => {
-    await fetchJson(`/admin/users/${userId}/feature-flags`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    });
+    await apiClient.patch(`/admin/users/${userId}/feature-flags`, patch);
     await refreshAll();
   };
 
@@ -405,6 +410,7 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
               退出登录
             </button>
           </div>
+          {lastRequestId ? <p style={{ margin: 0, color: '#6d5c47' }}>最近请求ID：{lastRequestId}</p> : null}
           {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
         </div>
       </section>
@@ -662,17 +668,71 @@ export default function AdminConsole(props: { initialPanel?: AdminPanel }) {
       {panel === 'logs' ? (
         <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8, display: 'grid', gap: 12 }}>
           <h2>日志管理</h2>
-          <div>
+          <div style={{ overflowX: 'auto' }}>
             <h3>请求日志</h3>
-            <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(requestLogs, null, 2)}</pre>
+            <button
+              onClick={() =>
+                exportCsv(
+                  `request-logs-${Date.now()}.csv`,
+                  ['id', 'created_at', 'method', 'path', 'status_code', 'duration_ms', 'user_id'],
+                  requestLogs.map((x) => [x.id, x.created_at, x.method, x.path, x.status_code, x.duration_ms, x.user_id ?? '']),
+                )
+              }
+            >
+              导出 CSV
+            </button>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th>ID</th><th>时间</th><th>方法</th><th>路径</th><th>状态</th><th>耗时(ms)</th><th>用户</th></tr></thead>
+              <tbody>
+                {requestLogs.map((x) => (
+                  <tr key={x.id}><td>{x.id}</td><td>{x.created_at}</td><td>{x.method}</td><td>{x.path}</td><td>{x.status_code}</td><td>{x.duration_ms}</td><td>{x.user_id ?? '-'}</td></tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div>
+          <div style={{ overflowX: 'auto' }}>
             <h3>错误日志</h3>
-            <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(errorLogs, null, 2)}</pre>
+            <button
+              onClick={() =>
+                exportCsv(
+                  `error-logs-${Date.now()}.csv`,
+                  ['id', 'created_at', 'source', 'code', 'message', 'task_id', 'user_id'],
+                  errorLogs.map((x) => [x.id, x.created_at, x.source, x.code, x.message, x.task_id ?? '', x.user_id ?? '']),
+                )
+              }
+            >
+              导出 CSV
+            </button>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th>ID</th><th>时间</th><th>来源</th><th>错误码</th><th>消息</th><th>任务</th><th>用户</th></tr></thead>
+              <tbody>
+                {errorLogs.map((x) => (
+                  <tr key={x.id}><td>{x.id}</td><td>{x.created_at}</td><td>{x.source}</td><td>{x.code}</td><td>{x.message}</td><td>{x.task_id ?? '-'}</td><td>{x.user_id ?? '-'}</td></tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div>
+          <div style={{ overflowX: 'auto' }}>
             <h3>模型调用日志</h3>
-            <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(apiCallLogs, null, 2)}</pre>
+            <button
+              onClick={() =>
+                exportCsv(
+                  `api-call-logs-${Date.now()}.csv`,
+                  ['id', 'created_at', 'provider', 'status', 'latency_ms', 'task_id', 'error_message'],
+                  apiCallLogs.map((x) => [x.id, x.created_at, x.provider, x.status, x.latency_ms, x.task_id ?? '', x.error_message ?? '']),
+                )
+              }
+            >
+              导出 CSV
+            </button>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th>ID</th><th>时间</th><th>Provider</th><th>状态</th><th>耗时(ms)</th><th>任务</th><th>错误信息</th></tr></thead>
+              <tbody>
+                {apiCallLogs.map((x) => (
+                  <tr key={x.id}><td>{x.id}</td><td>{x.created_at}</td><td>{x.provider}</td><td>{x.status}</td><td>{x.latency_ms}</td><td>{x.task_id ?? '-'}</td><td>{x.error_message ?? '-'}</td></tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
       ) : null}

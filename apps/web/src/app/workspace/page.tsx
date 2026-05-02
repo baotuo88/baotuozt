@@ -10,6 +10,15 @@ interface UserFeatureFlags {
   enable_new_model: boolean;
 }
 
+interface CurrentUser {
+  id: number;
+  email: string;
+  credits: number;
+  role: 'user' | 'admin' | 'operator';
+  status: 'active' | 'disabled' | 'banned';
+  feature_flags?: Partial<UserFeatureFlags>;
+}
+
 interface StyleOption {
   id: number;
   name: string;
@@ -24,13 +33,14 @@ const DEFAULT_STYLES: StyleOption[] = [
   { id: 4, name: '真实写真', mode: 'portrait', version: 1 },
   { id: 5, name: '创意插画', mode: 'general', version: 1 },
 ];
+const LATEST_TASK_ID_KEY = 'latest_task_id';
 
 export default function WorkspacePage() {
   const [mode, setMode] = useState<Mode>('ecommerce');
   const [styleOptions, setStyleOptions] = useState<StyleOption[]>(DEFAULT_STYLES);
   const [styleId, setStyleId] = useState<number>(DEFAULT_STYLES[0].id);
   const [desc, setDesc] = useState('');
-  const [points] = useState(36);
+  const [points, setPoints] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [remoteImageUrl, setRemoteImageUrl] = useState('');
@@ -43,7 +53,65 @@ export default function WorkspacePage() {
     show_new_feature: false,
     enable_new_model: false,
   });
+  const [userEmail, setUserEmail] = useState('');
+  const [taskStatusText, setTaskStatusText] = useState('');
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+
+  async function pollTaskUntilFinish(input: {
+    apiBase: string;
+    authToken: string;
+    taskId: number;
+    onProgress: (progress: number, statusText: string) => void;
+    onDone: (resultUrl: string) => void;
+    onFailed: (message: string) => void;
+  }): Promise<void> {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < 3 * 60 * 1000) {
+      const taskResp = await fetch(`${input.apiBase}/task/${input.taskId}`, {
+        headers: {
+          Authorization: `Bearer ${input.authToken}`,
+        },
+      });
+      if (!taskResp.ok) {
+        throw new Error('POLL_TASK_FAILED');
+      }
+
+      const task = (await taskResp.json()) as {
+        status: 'pending' | 'processing' | 'done' | 'failed' | 'canceled';
+        progress?: number;
+        result_url?: string | null;
+      };
+
+      const progress = task.progress ?? 0;
+      const statusText =
+        task.status === 'pending'
+          ? '排队中'
+          : task.status === 'processing'
+            ? '处理中'
+            : task.status === 'done'
+              ? '已完成'
+              : task.status === 'failed'
+                ? '任务失败'
+                : '任务已取消';
+      input.onProgress(progress, statusText);
+
+      if (task.status === 'done' && task.result_url) {
+        input.onDone(task.result_url);
+        localStorage.removeItem(LATEST_TASK_ID_KEY);
+        return;
+      }
+      if (task.status === 'failed' || task.status === 'canceled') {
+        input.onFailed(task.status === 'failed' ? '任务执行失败，请重试。' : '任务已取消。');
+        localStorage.removeItem(LATEST_TASK_ID_KEY);
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+
+    throw new Error('POLL_TASK_TIMEOUT');
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -51,6 +119,41 @@ export default function WorkspacePage() {
     }
     setAuthToken(localStorage.getItem('token') || '');
   }, []);
+
+  useEffect(() => {
+    if (!apiBase || !authToken) {
+      return;
+    }
+    const latestTaskId = Number(localStorage.getItem(LATEST_TASK_ID_KEY) || '0');
+    if (!Number.isInteger(latestTaskId) || latestTaskId <= 0) {
+      return;
+    }
+
+    setLoading(true);
+    setTaskStatusText('恢复最近任务状态中...');
+    void pollTaskUntilFinish({
+      apiBase,
+      authToken,
+      taskId: latestTaskId,
+      onProgress: (p, statusText) => {
+        setProgress(p);
+        setTaskStatusText(statusText);
+      },
+      onDone: (url) => {
+        setResultUrl(url);
+        setProgress(100);
+        setTaskStatusText('生成完成');
+        setLoading(false);
+      },
+      onFailed: (msg) => {
+        setErrorMessage(msg);
+        setLoading(false);
+      },
+    }).catch(() => {
+      setTaskStatusText('状态恢复失败');
+      setLoading(false);
+    });
+  }, [apiBase, authToken]);
 
   useEffect(() => {
     return () => {
@@ -120,8 +223,10 @@ export default function WorkspacePage() {
         if (!resp.ok) {
           return;
         }
-        const me = (await resp.json()) as { feature_flags?: Partial<UserFeatureFlags> };
+        const me = (await resp.json()) as CurrentUser;
         if (!canceled) {
+          setPoints(Number.isInteger(me.credits) ? me.credits : 0);
+          setUserEmail(me.email || '');
           setFeatureFlags({
             show_new_feature: Boolean(me.feature_flags?.show_new_feature),
             enable_new_model: Boolean(me.feature_flags?.enable_new_model),
@@ -228,12 +333,14 @@ export default function WorkspacePage() {
     setErrorMessage('');
 
     if (!authToken) {
-      setErrorMessage('请先登录后再生成图片。');
+      setErrorMessage('请先登录后再生成图片（右上角“账号”）。');
       return;
     }
 
     setLoading(true);
     setProgress(10);
+    setTaskStatusText('准备任务...');
+    setResultUrl('');
 
     let normalizedRemoteUrl = normalizeRemoteImageUrl(remoteImageUrl);
 
@@ -282,6 +389,7 @@ export default function WorkspacePage() {
 
       if (created.from_cache && created.result_url) {
         setProgress(100);
+        setTaskStatusText('命中缓存，已直接返回结果');
         setResultUrl(created.result_url);
         setLoading(false);
         return;
@@ -290,53 +398,29 @@ export default function WorkspacePage() {
       if (!created.task_id) {
         throw new Error('TASK_ID_MISSING');
       }
+      localStorage.setItem(LATEST_TASK_ID_KEY, String(created.task_id));
 
-      const poll = async () => {
-        const taskResp = await fetch(`${apiBase}/task/${created.task_id}`, {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        });
-        if (!taskResp.ok) {
-          throw new Error('POLL_TASK_FAILED');
-        }
-
-        const task = (await taskResp.json()) as {
-          status: 'pending' | 'processing' | 'done' | 'failed' | 'canceled';
-          progress?: number;
-          result_url?: string | null;
-        };
-
-        setProgress(task.progress ?? 0);
-
-        if (task.status === 'done' && task.result_url) {
-          setResultUrl(task.result_url);
+      await pollTaskUntilFinish({
+        apiBase,
+        authToken,
+        taskId: created.task_id,
+        onProgress: (p, statusText) => {
+          setProgress(p);
+          setTaskStatusText(statusText);
+        },
+        onDone: (url) => {
+          setResultUrl(url);
           setProgress(100);
-          setLoading(false);
-          return true;
-        }
-
-        if (task.status === 'failed' || task.status === 'canceled') {
-          setLoading(false);
-          return true;
-        }
-
-        return false;
-      };
-
-      const timer = setInterval(async () => {
-        try {
-          const completed = await poll();
-          if (completed) {
-            clearInterval(timer);
-          }
-        } catch (_error) {
-          clearInterval(timer);
-          setLoading(false);
-        }
-      }, 1500);
+          setTaskStatusText('生成完成');
+        },
+        onFailed: (msg) => {
+          setErrorMessage(msg);
+        },
+      });
+      setLoading(false);
     } catch (_error) {
       setErrorMessage('创建任务失败，请稍后重试。');
+      setTaskStatusText('创建失败');
       setLoading(false);
     }
   };
@@ -347,6 +431,7 @@ export default function WorkspacePage() {
         <div>
           <p className="brand">宝拓智图 · 工作台</p>
           <h1>{modeLabel}出图</h1>
+          {userEmail ? <p className="brand">当前账号：{userEmail}</p> : null}
           {featureFlags.enable_new_model ? <p className="brand">已启用：新模型通道</p> : null}
         </div>
         <div className="points">点数：{points}</div>
@@ -425,7 +510,7 @@ export default function WorkspacePage() {
           </button>
           {errorMessage ? <p style={{ color: '#b42318', margin: 0 }}>{errorMessage}</p> : null}
           <div>
-            任务进度：{progress}%
+            任务进度：{progress}% {taskStatusText ? `· ${taskStatusText}` : ''}
             <div style={{ height: 8, background: '#eadfcf', borderRadius: 999, marginTop: 6 }}>
               <div
                 style={{

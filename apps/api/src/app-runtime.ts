@@ -1,6 +1,7 @@
 import { Router as ExpressRouter, type RequestHandler, type Router } from 'express';
 import { Pool, types as pgTypes } from 'pg';
 import Redis from 'ioredis';
+import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import {
   createApiApp,
 } from './create-api-app';
@@ -303,6 +304,67 @@ export async function runApiServer(): Promise<void> {
     repository: new AbTestPgRepository(pg),
     generateGateway: generateImageTaskService,
   }));
+
+  const readinessRouter = ExpressRouter();
+  readinessRouter.get('/readyz', async (_req, res) => {
+    const startedAt = Date.now();
+    let pgOk = false;
+    let redisOk = false;
+    let s3Ok: boolean | null = null;
+
+    try {
+      await pgPool.query('SELECT 1');
+      pgOk = true;
+    } catch (_error) {
+      pgOk = false;
+    }
+
+    try {
+      const pong = await redis.ping();
+      redisOk = pong === 'PONG';
+    } catch (_error) {
+      redisOk = false;
+    }
+
+    if (config.s3Enabled) {
+      const bucket = process.env.S3_BUCKET;
+      const region = process.env.S3_REGION;
+      if (bucket && region) {
+        try {
+          const s3 = new S3Client({
+            region,
+            endpoint: process.env.S3_ENDPOINT,
+            forcePathStyle: process.env.S3_FORCE_PATH_STYLE === '1' || process.env.S3_FORCE_PATH_STYLE === 'true',
+            credentials: process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY
+              ? {
+                  accessKeyId: process.env.S3_ACCESS_KEY_ID,
+                  secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+                }
+              : undefined,
+          });
+          await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+          s3Ok = true;
+        } catch (_error) {
+          s3Ok = false;
+        }
+      } else {
+        s3Ok = false;
+      }
+    }
+
+    const ready = pgOk && redisOk && (s3Ok === null || s3Ok);
+    res.status(ready ? 200 : 503).json({
+      ok: ready,
+      checks: {
+        postgres: pgOk ? 'up' : 'down',
+        redis: redisOk ? 'up' : 'down',
+        s3: s3Ok === null ? 'skipped' : (s3Ok ? 'up' : 'down'),
+      },
+      took_ms: Date.now() - startedAt,
+      now: new Date().toISOString(),
+    });
+  });
+  routerList.push(readinessRouter);
 
   const imageDetailRouter = ExpressRouter();
   imageDetailRouter.get('/image/:id', async (req, res) => {
