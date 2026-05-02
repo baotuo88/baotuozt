@@ -72,13 +72,50 @@ function buildFeatureFlagsMergePatch(patch: UserFeatureFlagsPatch): string {
 export class AdminPgRepository implements AdminRepository {
   constructor(private readonly pg: PgClientLike) {}
 
-  async listUsers(): Promise<AdminUserItem[]> {
+  async listUsers(input?: {
+    keyword?: string;
+    role?: 'user' | 'admin' | 'operator';
+    status?: 'active' | 'disabled' | 'banned';
+    limit?: number;
+    offset?: number;
+  }): Promise<AdminUserItem[]> {
+    const where: string[] = [];
+    const params: unknown[] = [];
+
+    if (input?.keyword) {
+      params.push(`%${input.keyword}%`);
+      where.push(`email ILIKE $${params.length}`);
+    }
+    if (input?.role) {
+      params.push(input.role);
+      where.push(`role = $${params.length}`);
+    }
+    if (input?.status) {
+      params.push(input.status);
+      where.push(`status = $${params.length}`);
+    }
+
+    const limit = Number.isInteger(input?.limit) && (input?.limit ?? 0) > 0
+      ? Math.min(input?.limit ?? 100, 500)
+      : 100;
+    const offset = Number.isInteger(input?.offset) && (input?.offset ?? 0) >= 0
+      ? (input?.offset ?? 0)
+      : 0;
+
+    params.push(limit);
+    const limitParamIndex = params.length;
+    params.push(offset);
+    const offsetParamIndex = params.length;
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
     const result = await this.pg.query<AdminUserRow>(
       `SELECT id, email, role, status, credits, feature_flags, created_at
        FROM users
+       ${whereSql}
        ORDER BY id DESC
-       LIMIT 500`,
-      [],
+       LIMIT $${limitParamIndex}
+       OFFSET $${offsetParamIndex}`,
+      params,
     );
     return result.rows.map(toAdminUserItem);
   }

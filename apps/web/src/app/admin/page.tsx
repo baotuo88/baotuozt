@@ -53,7 +53,47 @@ type AdminStats = {
   };
 };
 
+type RequestLog = {
+  id: number;
+  user_id?: number | null;
+  method: string;
+  path: string;
+  status_code: number;
+  duration_ms: number;
+  created_at: string;
+};
+
+type ErrorLog = {
+  id: number;
+  user_id?: number | null;
+  task_id?: number | null;
+  source: string;
+  code: string;
+  message: string;
+  created_at: string;
+};
+
+type ApiCallLog = {
+  id: number;
+  user_id?: number | null;
+  task_id?: number | null;
+  provider: string;
+  endpoint: string;
+  status: 'success' | 'failed';
+  latency_ms: number;
+  error_message?: string;
+  created_at: string;
+};
+
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+
+function toQueryRole(value: 'all' | UserRole): string {
+  return value === 'all' ? '' : value;
+}
+
+function toQueryStatus(value: 'all' | UserStatus): string {
+  return value === 'all' ? '' : value;
+}
 
 export default function AdminPage() {
   const [token, setToken] = useState('');
@@ -64,6 +104,31 @@ export default function AdminPage() {
   const [tasks, setTasks] = useState<AdminTask[]>([]);
   const [providers, setProviders] = useState<AdminProvider[]>([]);
   const [taskLimit, setTaskLimit] = useState(100);
+  const [userKeyword, setUserKeyword] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | UserRole>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | UserStatus>('all');
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(20);
+  const [requestLogs, setRequestLogs] = useState<RequestLog[]>([]);
+  const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
+  const [apiCallLogs, setApiCallLogs] = useState<ApiCallLog[]>([]);
+  const [logsLimit, setLogsLimit] = useState(50);
+  const [providerForm, setProviderForm] = useState({
+    name: '',
+    base_url: '',
+    api_key: '',
+    model_type: 'gpt-image-1',
+    priority: 100,
+    status: 'active' as ProviderStatus,
+  });
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    void refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userPage, userPageSize]);
 
   const canRun = useMemo(() => Boolean(apiBase && token), [token]);
 
@@ -111,7 +176,9 @@ export default function AdminPage() {
     try {
       const [statsResp, usersResp, tasksResp, providersResp] = await Promise.all([
         fetchJson<AdminStats>('/admin/stats'),
-        fetchJson<AdminUser[]>('/admin/users'),
+        fetchJson<AdminUser[]>(
+          `/admin/users?keyword=${encodeURIComponent(userKeyword)}&role=${toQueryRole(userRoleFilter)}&status=${toQueryStatus(userStatusFilter)}&limit=${userPageSize}&offset=${(userPage - 1) * userPageSize}`,
+        ),
         fetchJson<AdminTask[]>(`/admin/tasks?limit=${taskLimit}`),
         fetchJson<AdminProvider[]>('/admin/api-configs'),
       ]);
@@ -119,6 +186,29 @@ export default function AdminPage() {
       setUsers(usersResp);
       setTasks(tasksResp);
       setProviders(providersResp);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshLogs = async () => {
+    if (!canRun) {
+      setError('请先填写管理员 token，且 NEXT_PUBLIC_API_BASE_URL 需要已配置。');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const [r1, r2, r3] = await Promise.all([
+        fetchJson<RequestLog[]>(`/logs/requests?limit=${logsLimit}`),
+        fetchJson<ErrorLog[]>(`/logs/errors?limit=${logsLimit}`),
+        fetchJson<ApiCallLog[]>(`/logs/api-calls?limit=${logsLimit}`),
+      ]);
+      setRequestLogs(r1);
+      setErrorLogs(r2);
+      setApiCallLogs(r3);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -166,6 +256,68 @@ export default function AdminPage() {
     await refreshAll();
   };
 
+  const saveProvider = async (provider: AdminProvider) => {
+    const baseUrl = window.prompt('Base URL', provider.base_url);
+    if (!baseUrl) {
+      return;
+    }
+    const apiKey = window.prompt('API Key（留空不修改）', '');
+    const priorityRaw = window.prompt('Priority', String(provider.priority));
+    const priority = Number(priorityRaw ?? provider.priority);
+    if (!Number.isInteger(priority)) {
+      setError('priority 必须是整数');
+      return;
+    }
+
+    await fetchJson(`/admin/model-providers/${provider.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        base_url: baseUrl.trim(),
+        api_key: (apiKey ?? '').trim() || undefined,
+        priority,
+      }),
+    });
+    await refreshAll();
+  };
+
+  const createProvider = async () => {
+    if (!providerForm.name.trim() || !providerForm.base_url.trim() || !providerForm.api_key.trim()) {
+      setError('新增 provider 时 name / base_url / api_key 为必填');
+      return;
+    }
+    await fetchJson('/admin/model-providers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: providerForm.name.trim(),
+        base_url: providerForm.base_url.trim(),
+        api_key: providerForm.api_key.trim(),
+        model_type: providerForm.model_type.trim(),
+        priority: providerForm.priority,
+        status: providerForm.status,
+      }),
+    });
+    setProviderForm({
+      name: '',
+      base_url: '',
+      api_key: '',
+      model_type: 'gpt-image-1',
+      priority: 100,
+      status: 'active',
+    });
+    await refreshAll();
+  };
+
+  const patchUserFlags = async (
+    userId: number,
+    patch: { show_new_feature?: boolean; enable_new_model?: boolean },
+  ) => {
+    await fetchJson(`/admin/users/${userId}/feature-flags`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    await refreshAll();
+  };
+
   return (
     <main style={{ padding: 20, display: 'grid', gap: 16 }}>
       <h1>Admin Console</h1>
@@ -189,9 +341,23 @@ export default function AdminPage() {
             value={taskLimit}
             onChange={(e) => setTaskLimit(Number(e.target.value) || 100)}
           />
-          <button onClick={() => void refreshAll()} disabled={loading || !token}>
-            {loading ? 'Loading...' : 'Refresh Dashboard'}
-          </button>
+          <label htmlFor="logsLimit">Logs Limit</label>
+          <input
+            id="logsLimit"
+            type="number"
+            min={1}
+            max={500}
+            value={logsLimit}
+            onChange={(e) => setLogsLimit(Number(e.target.value) || 50)}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => void refreshAll()} disabled={loading || !token}>
+              {loading ? 'Loading...' : 'Refresh Dashboard'}
+            </button>
+            <button onClick={() => void refreshLogs()} disabled={loading || !token}>
+              Refresh Logs
+            </button>
+          </div>
           {error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
         </div>
       </section>
@@ -203,6 +369,49 @@ export default function AdminPage() {
 
       <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
         <h2>Users</h2>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <input
+            placeholder="search email"
+            value={userKeyword}
+            onChange={(e) => setUserKeyword(e.target.value)}
+          />
+          <select value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value as 'all' | UserRole)}>
+            <option value="all">all roles</option>
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+            <option value="operator">operator</option>
+          </select>
+          <select value={userStatusFilter} onChange={(e) => setUserStatusFilter(e.target.value as 'all' | UserStatus)}>
+            <option value="all">all status</option>
+            <option value="active">active</option>
+            <option value="disabled">disabled</option>
+            <option value="banned">banned</option>
+          </select>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={userPageSize}
+            onChange={(e) => setUserPageSize(Number(e.target.value) || 20)}
+          />
+          <button onClick={() => { setUserPage(1); void refreshAll(); }}>Apply Filter</button>
+          <button
+            onClick={() => {
+              setUserPage((prev) => Math.max(1, prev - 1));
+            }}
+          >
+            Prev Page
+          </button>
+          <span>Page {userPage}</span>
+          <button
+            onClick={() => {
+              setUserPage((prev) => prev + 1);
+            }}
+          >
+            Next Page
+          </button>
+          <button onClick={() => void refreshAll()}>Refresh Current Page</button>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -240,7 +449,25 @@ export default function AdminPage() {
                       Toggle Active
                     </button>{' '}
                     <button onClick={() => void adjustCredits(user.id, 10)}>+10</button>{' '}
-                    <button onClick={() => void adjustCredits(user.id, -10)}>-10</button>
+                    <button onClick={() => void adjustCredits(user.id, -10)}>-10</button>{' '}
+                    <button
+                      onClick={() =>
+                        void patchUserFlags(user.id, {
+                          show_new_feature: !Boolean(user.feature_flags?.show_new_feature),
+                        })
+                      }
+                    >
+                      Toggle NewFeature
+                    </button>{' '}
+                    <button
+                      onClick={() =>
+                        void patchUserFlags(user.id, {
+                          enable_new_model: !Boolean(user.feature_flags?.enable_new_model),
+                        })
+                      }
+                    >
+                      Toggle NewModel
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -290,6 +517,49 @@ export default function AdminPage() {
 
       <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
         <h2>Model Providers</h2>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+          <h3>Create Provider</h3>
+          <input
+            placeholder="name"
+            value={providerForm.name}
+            onChange={(e) => setProviderForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <input
+            placeholder="base_url"
+            value={providerForm.base_url}
+            onChange={(e) => setProviderForm((prev) => ({ ...prev, base_url: e.target.value }))}
+          />
+          <input
+            placeholder="api_key"
+            value={providerForm.api_key}
+            onChange={(e) => setProviderForm((prev) => ({ ...prev, api_key: e.target.value }))}
+          />
+          <input
+            placeholder="model_type"
+            value={providerForm.model_type}
+            onChange={(e) => setProviderForm((prev) => ({ ...prev, model_type: e.target.value }))}
+          />
+          <input
+            type="number"
+            placeholder="priority"
+            value={providerForm.priority}
+            onChange={(e) => setProviderForm((prev) => ({ ...prev, priority: Number(e.target.value) || 100 }))}
+          />
+          <select
+            value={providerForm.status}
+            onChange={(e) =>
+              setProviderForm((prev) => ({
+                ...prev,
+                status: e.target.value as ProviderStatus,
+              }))
+            }
+          >
+            <option value="active">active</option>
+            <option value="inactive">inactive</option>
+            <option value="error">error</option>
+          </select>
+          <button onClick={() => void createProvider()}>Create Provider</button>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -313,13 +583,29 @@ export default function AdminPage() {
                   <td>{provider.status}</td>
                   <td>{provider.priority}</td>
                   <td>
-                    <button onClick={() => void toggleProviderStatus(provider)}>Toggle Status</button>
+                    <button onClick={() => void toggleProviderStatus(provider)}>Toggle Status</button>{' '}
+                    <button onClick={() => void saveProvider(provider)}>Edit URL/Key/Priority</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+        <h2>Request Logs</h2>
+        <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(requestLogs, null, 2)}</pre>
+      </section>
+
+      <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+        <h2>Error Logs</h2>
+        <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(errorLogs, null, 2)}</pre>
+      </section>
+
+      <section style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+        <h2>API Call Logs</h2>
+        <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(apiCallLogs, null, 2)}</pre>
       </section>
     </main>
   );

@@ -53,7 +53,30 @@ export function createAdminRouter(params: {
 
   router.get('/admin/users', requireAdmin, async (_req: AuthenticatedRequest, res: Response) => {
     try {
-      const users = await params.adminService.getUsers();
+      const keywordRaw = typeof _req.query.keyword === 'string' ? _req.query.keyword.trim() : '';
+      const roleRaw = _req.query.role;
+      const statusRaw = _req.query.status;
+      const limitRaw = typeof _req.query.limit === 'string' ? Number(_req.query.limit) : undefined;
+      const offsetRaw = typeof _req.query.offset === 'string' ? Number(_req.query.offset) : undefined;
+
+      const role =
+        roleRaw === 'user' || roleRaw === 'admin' || roleRaw === 'operator'
+          ? roleRaw
+          : undefined;
+      const status =
+        statusRaw === 'active' || statusRaw === 'disabled' || statusRaw === 'banned'
+          ? statusRaw
+          : undefined;
+      const limit = Number.isInteger(limitRaw) && (limitRaw ?? 0) > 0 ? limitRaw : undefined;
+      const offset = Number.isInteger(offsetRaw) && (offsetRaw ?? 0) >= 0 ? offsetRaw : undefined;
+
+      const users = await params.adminService.getUsers({
+        keyword: keywordRaw || undefined,
+        role,
+        status,
+        limit,
+        offset,
+      });
       res.status(200).json(users);
     } catch (error) {
       const mapped = mapError(error);

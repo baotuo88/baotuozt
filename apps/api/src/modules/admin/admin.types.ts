@@ -67,7 +67,7 @@ export interface AdminStats {
 }
 
 export interface AdminRepository {
-  listUsers(): Promise<AdminUserItem[]>;
+  listUsers(input?: { keyword?: string; role?: 'user' | 'admin' | 'operator'; status?: 'active' | 'disabled' | 'banned'; limit?: number; offset?: number }): Promise<AdminUserItem[]>;
   updateUserStatus(userId: number, status: 'active' | 'disabled' | 'banned'): Promise<AdminUserItem | null>;
   updateUserRole(userId: number, role: 'user' | 'admin' | 'operator'): Promise<AdminUserItem | null>;
   adjustUserCredits(userId: number, delta: number): Promise<AdminUserItem | null>;

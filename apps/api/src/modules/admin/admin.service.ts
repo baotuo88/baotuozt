@@ -9,8 +9,8 @@ export class AdminService {
     private readonly usageService?: UsageService,
   ) {}
 
-  async getUsers() {
-    return this.repository.listUsers();
+  async getUsers(input?: { keyword?: string; role?: 'user' | 'admin' | 'operator'; status?: 'active' | 'disabled' | 'banned'; limit?: number; offset?: number }) {
+    return this.repository.listUsers(input);
   }
 
   async getApiConfigs() {
