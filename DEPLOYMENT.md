@@ -1,8 +1,8 @@
 # 宝拓智图 Docker 与上线文档
 
 ## 1. 服务结构
-- `web`：Next.js 前端，默认端口 `3001`
-- `api`：Express API，默认端口 `3000`
+- `web`：Next.js 前端，默认端口 `6001`
+- `api`：Express API，默认端口 `6002`
 - `worker`：异步生图任务消费者
 - `postgres`：业务数据库
 - `redis`：队列与限流
@@ -39,8 +39,8 @@ docker compose -p baotuo logs -f migrate api worker web
 ```
 
 访问地址：
-- Web: `http://localhost:3001`
-- API 健康检查: `http://localhost:3000/healthz`
+- Web: `http://localhost:6001`
+- API 健康检查: `http://localhost:6002/healthz`
 
 ## 3. 常用运维命令
 停止容器：

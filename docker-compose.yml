@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PORT:-6003}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-baotuo}-redis
     restart: unless-stopped
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '${REDIS_PORT:-6004}:6379'
     volumes:
       - redisdata:/data
     healthcheck:
@@ -60,7 +60,7 @@ services:
     env_file:
       - .env
     ports:
-      - '${API_PORT:-3000}:3000'
+      - '${API_PORT:-6002}:3000'
     volumes:
       - api_storage:/app/apps/api/storage
 
@@ -100,7 +100,7 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
       NEXT_PUBLIC_IMAGE_HOSTS: ${NEXT_PUBLIC_IMAGE_HOSTS}
     ports:
-      - '${WEB_PORT:-3001}:3001'
+      - '${WEB_PORT:-6001}:3001'
 
 volumes:
   pgdata:
